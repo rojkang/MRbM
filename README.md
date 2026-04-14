@@ -1,10 +1,8 @@
 Movie Recommender by Mood (MRM)
-What the software does
-
+**What the software does**
 Movie Recommender by Mood is a simple web application that recommends movies based on the user's current mood. The user selects a mood, and the app displays a short curated list of matching films.
 
-Core features implemented
-
+**Core features implemented**
 - Mood selection screen
 - Six mood options: Happy, Sad, Relaxed, Excited, Romantic, Motivated
 - Movie recommendation cards
@@ -15,8 +13,7 @@ Core features implemented
 - Simple and responsive visual design
 - No login required
 
-Setup and run instructions
-
+**Setup and run instructions**
 1. Download or copy the project folder.
 2. Make sure the following files are in the same project folder:
    - movie-recommender.html
@@ -26,24 +23,16 @@ Setup and run instructions
 5. View the recommended movies for that mood.
 6. Use the Change mood button to go back and choose another mood.
 
-Dependencies / install steps
-
+**Dependencies / install steps**
 No installation is required.
-
-This project does not use npm, Python, backend code, or a database. It runs locally using HTML, CSS, and JavaScript.
-
+This project does not use npm, Python, backend code, or a database because the app does not require the use to login may add them in the future though. It runs locally using HTML, CSS, and JavaScript.
 The project uses Google Fonts through an online link. If there is no internet connection, the website will still work, but the font style may look slightly different.
-
-Environment variables / config
-
+**Environment variables / config**
 No environment variables are needed.
-
 A .env file is not required because there is no backend, database, or API key in this prototype.
 
-Test credentials / sample inputs
-
+**Test credentials / sample inputs**
 No test credentials are needed because the system does not have a login feature.
-
 Sample inputs:
 - Happy
 - Sad
@@ -52,8 +41,7 @@ Sample inputs:
 - Romantic
 - Motivated
 
-Known limitations / not implemented yet
-
+**Known limitations / not implemented yet**
 - The movie dataset is static and manually written inside the JavaScript code.
 - There is no user account or login system.
 - There is no database.
@@ -64,6 +52,5 @@ Known limitations / not implemented yet
 - The user cant choose more than one mood
 - The movies are limited to 5 choices per mood
 
-Project scope note
-
+**Project scope note**
 This prototype focuses on the main idea of the project: helping users choose a movie quickly by selecting their current mood. The aim is to demonstrate the core functionality in a simple and understandable way.i may make it more functional and add more wider of moveies to choose from in the future
