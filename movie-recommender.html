@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MRbM — Movie Recommender</title>
+
+<!-- Google Fonts — Playfair for that cinematic serif feel, DM Sans for clean readable body text -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+
+<style>
+  /* Reset — just nuking default browser spacing so nothing looks weird out of the box */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  /* Colour palette — dark background with warm gold accents to feel like a cinema at night */
+  :root {
+    --bg: #0a0a0f;           /* almost black, easier on the eyes than pure #000 */
+    --surface: #13131c;      /* slightly lighter for card backgrounds */
+    --surface2: #1c1c2a;     /* used for the poster placeholder */
+    --accent: #e8b86d;       /* the main gold — used everywhere as a highlight */
+    --accent2: #c97b4b;      /* a deeper orange-gold for gradients */
+    --text: #f0ead8;         /* warm off-white, not harsh like pure white */
+    --muted: #7a7a8c;        /* for secondary text like descriptions and labels */
+    --border: rgba(232,184,109,0.18); /* subtle gold border, mostly transparent */
+  }
+
+  html, body { height: 100%; background: var(--bg); color: var(--text); font-family: 'DM Sans', sans-serif; overflow-x: hidden; }
+
+  /* Film grain overlay — gives the whole page a subtle texture, like a physical print.
+     It's a tiny inline SVG with a noise filter so we don't need an external image file. */
+  body::before {
+    content: ''; position: fixed; inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+    pointer-events: none; z-index: 9999; opacity: 0.4;
+  }
+
+  /* Ambient glow blobs — these are just blurred coloured divs sitting behind everything.
+     They add a bit of depth and warmth without being too distracting. */
+  .ambient { position: fixed; border-radius: 50%; filter: blur(120px); pointer-events: none; z-index: 0; }
+  .ambient-1 { width: 500px; height: 500px; background: rgba(201,123,75,0.08); top: -150px; left: -100px; }
+  .ambient-2 { width: 400px; height: 400px; background: rgba(232,184,109,0.06); bottom: -100px; right: -80px; }
+
+  /* Each "page" is a screen that fills the whole viewport.
+     We swap between them by toggling the .hidden class — no routing needed. */
+  .screen {
+    position: fixed; inset: 0; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; padding: 2rem;
+    transition: opacity 0.45s ease, transform 0.45s ease; z-index: 10;
+  }
+  /* Hidden screens fade out and slide down slightly — keeps the transition feeling smooth */
+  .screen.hidden { opacity: 0; pointer-events: none; transform: translateY(20px); }
+
+  /* Logo section at the top of the mood picker */
+  .logo { text-align: center; margin-bottom: 2.5rem; }
+  .logo-eyebrow { font-size: 0.65rem; letter-spacing: 0.35em; text-transform: uppercase; color: var(--accent); margin-bottom: 0.4rem; }
+  .logo-title {
+    font-family: 'Playfair Display', serif; font-size: clamp(2.2rem, 5vw, 3.2rem); font-weight: 700;
+    /* Gradient text trick — clips the background to just the text shape */
+    background: linear-gradient(135deg, var(--accent) 0%, var(--text) 60%);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+  }
+  .logo-sub { font-size: 0.82rem; color: var(--muted); margin-top: 0.6rem; letter-spacing: 0.05em; }
+
+  /* Small label above the mood buttons */
+  .mood-prompt { font-size: 0.75rem; color: var(--muted); text-align: center; margin-bottom: 2rem; letter-spacing: 0.06em; text-transform: uppercase; }
+
+  /* 2-column grid for the six mood buttons */
+  .mood-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.9rem; width: 100%; max-width: 380px; }
+
+  /* The mood buttons themselves */
+  .mood-btn {
+    position: relative; background: var(--surface); border: 1px solid var(--border);
+    color: var(--text); padding: 1.1rem 1rem; border-radius: 10px;
+    font-family: 'Playfair Display', serif; font-size: 1.05rem; font-style: italic;
+    cursor: pointer; transition: all 0.25s ease; overflow: hidden;
+    display: flex; align-items: center; justify-content: center; gap: 0.5rem;
+  }
+  /* The hover glow is done with a pseudo-element so we can animate just the opacity
+     rather than the whole background — much smoother that way */
+  .mood-btn::before {
+    content: ''; position: absolute; inset: 0;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    opacity: 0; transition: opacity 0.25s ease;
+  }
+  .mood-btn:hover::before { opacity: 0.12; }
+  .mood-btn:hover { border-color: var(--accent); transform: translateY(-2px); box-shadow: 0 8px 30px rgba(232,184,109,0.15); }
+  .mood-btn:active { transform: translateY(0); } /* snap back when you click */
+  /* z-index on the spans so they sit above the ::before glow layer */
+  .mood-btn .emoji { font-style: normal; font-size: 1.2rem; position: relative; z-index: 1; }
+  .mood-btn span:last-child { position: relative; z-index: 1; }
+
+  /* "No login needed" note at the bottom — the little lines either side are pure CSS */
+  .no-login { margin-top: 2rem; font-size: 0.72rem; color: var(--muted); display: flex; align-items: center; gap: 0.4rem; }
+  .no-login::before, .no-login::after { content: ''; width: 30px; height: 1px; background: var(--border); }
+
+  /* Results screen scrolls vertically, so we override the centered layout */
+  #results-screen { justify-content: flex-start; padding-top: 0; overflow-y: auto; }
+
+  /* Sticky header on the results page — stays visible as you scroll down through films */
+  .results-header {
+    width: 100%; max-width: 620px; padding: 2rem 0 1.2rem;
+    display: flex; align-items: center; justify-content: space-between;
+    position: sticky; top: 0;
+    /* Gradient fade so cards smoothly disappear behind the header as you scroll */
+    background: linear-gradient(to bottom, var(--bg) 80%, transparent); z-index: 20;
+  }
+  .results-title { font-family: 'Playfair Display', serif; font-size: 1rem; font-style: italic; color: var(--muted); }
+  .results-title strong { color: var(--accent); font-style: normal; font-size: 1.2rem; }
+
+  /* "← Change mood" button — takes you back to the picker */
+  .back-btn {
+    background: var(--surface); border: 1px solid var(--border); color: var(--text);
+    padding: 0.5rem 1rem; border-radius: 6px; font-family: 'DM Sans', sans-serif;
+    font-size: 0.8rem; cursor: pointer; display: flex; align-items: center; gap: 0.4rem; transition: all 0.2s;
+  }
+  .back-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+  /* The vertical list of movie cards */
+  .movie-list { width: 100%; max-width: 620px; display: flex; flex-direction: column; gap: 1.2rem; padding-bottom: 3rem; }
+
+  /* Each movie card — starts invisible and slides up into place via the cardIn animation */
+  .movie-card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
+    display: flex; gap: 1.2rem; padding: 1.2rem;
+    opacity: 0; transform: translateY(16px);
+    animation: cardIn 0.45s ease forwards; transition: box-shadow 0.25s;
+  }
+  /* Glowing border on hover — double box-shadow gives the "lit up" effect */
+  .movie-card:hover { box-shadow: 0 0 0 1px var(--accent), 0 12px 40px rgba(232,184,109,0.1); }
+
+  /* Cards stagger in one by one so they don't all pop up at the same time */
+  @keyframes cardIn { to { opacity: 1; transform: translateY(0); } }
+  .movie-card:nth-child(1) { animation-delay: 0.05s; }
+  .movie-card:nth-child(2) { animation-delay: 0.15s; }
+  .movie-card:nth-child(3) { animation-delay: 0.25s; }
+  .movie-card:nth-child(4) { animation-delay: 0.35s; }
+  .movie-card:nth-child(5) { animation-delay: 0.45s; }
+
+  /* Emoji poster placeholder — stands in for an actual movie poster image */
+  .movie-poster {
+    width: 75px; min-width: 75px; height: 110px; border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 2.2rem; background: linear-gradient(135deg, var(--surface2), #1a1a28);
+  }
+  .movie-poster img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 8px;
+}
+  /* Right-hand side of the card — all the text info */
+  .movie-info { flex: 1; min-width: 0; } /* min-width:0 stops flex children from overflowing */
+  .movie-rating { font-size: 0.75rem; color: var(--accent); margin-bottom: 0.3rem; }
+  .movie-top { display: flex; align-items: flex-start; gap: 0.6rem; flex-wrap: wrap; margin-bottom: 0.4rem; }
+  .movie-title { font-family: 'Playfair Display', serif; font-size: 1.05rem; font-weight: 700; line-height: 1.2; }
+  .movie-year { font-size: 0.72rem; color: var(--muted); padding: 0.2rem 0.5rem; border: 1px solid var(--border); border-radius: 4px; white-space: nowrap; margin-top: 2px; }
+  /* Small badge showing the mood category for this film */
+  .mood-tag { font-size: 0.65rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--accent); background: rgba(232,184,109,0.1); border: 1px solid rgba(232,184,109,0.25); padding: 0.2rem 0.55rem; border-radius: 4px; white-space: nowrap; margin-top: 2px; }
+  .movie-desc { font-size: 0.82rem; color: var(--muted); line-height: 1.55; margin-bottom: 0.85rem; }
+  .movie-actions { display: flex; gap: 0.6rem; }
+
+  /* Trailer button (filled gold) and More Info button (outlined) */
+  .btn-trailer, .btn-info {
+    padding: 0.45rem 0.9rem; border-radius: 6px; font-size: 0.75rem;
+    font-family: 'DM Sans', sans-serif; font-weight: 500; cursor: pointer;
+    transition: all 0.2s; text-decoration: none; display: inline-flex; align-items: center; gap: 0.3rem; border: none;
+  }
+  .btn-trailer { background: linear-gradient(135deg, var(--accent), var(--accent2)); color: #0a0a0f; }
+  .btn-trailer:hover { opacity: 0.88; transform: translateY(-1px); }
+  .btn-info { background: transparent; border: 1px solid var(--border); color: var(--text); }
+  .btn-info:hover { border-color: var(--accent); color: var(--accent); }
+</style>
+</head>
+<body>
+
+<!-- Background atmosphere — these blurred blobs sit behind everything -->
+<div class="ambient ambient-1"></div>
+<div class="ambient ambient-2"></div>
+
+<!-- =============================================
+     SCREEN 1: Mood Picker
+     The landing page — user picks how they feel
+     and we take it from there.
+============================================= -->
+<div class="screen" id="mood-screen">
+  <div class="logo">
+    <div class="logo-eyebrow">✦ Curated Cinema ✦</div>
+    <div class="logo-title">MRbM</div>
+    <div class="logo-sub">Movie Recommender by Mood</div>
+  </div>
+
+  <div class="mood-prompt">How do you feel today?</div>
+
+  <!-- Six moods in a 2-column grid. Each one calls selectMood() with its label. -->
+  <div class="mood-grid">
+    <button class="mood-btn" onclick="selectMood('Happy')"><span class="emoji">😊</span><span>Happy</span></button>
+    <button class="mood-btn" onclick="selectMood('Sad')"><span class="emoji">😢</span><span>Sad</span></button>
+    <button class="mood-btn" onclick="selectMood('Relaxed')"><span class="emoji">😌</span><span>Relaxed</span></button>
+    <button class="mood-btn" onclick="selectMood('Excited')"><span class="emoji">🤩</span><span>Excited</span></button>
+    <button class="mood-btn" onclick="selectMood('Romantic')"><span class="emoji">💕</span><span>Romantic</span></button>
+    <button class="mood-btn" onclick="selectMood('Motivated')"><span class="emoji">💪</span><span>Motivated</span></button>
+  </div>
+
+  <div class="no-login">No login needed</div>
+</div>
+
+<!-- =============================================
+     SCREEN 2: Results
+     Shown after a mood is picked. The header
+     stays sticky so you can always go back.
+============================================= -->
+<div class="screen hidden" id="results-screen">
+  <div class="results-header">
+    <div class="results-title">Results for: <strong id="mood-label">—</strong></div>
+    <button class="back-btn" onclick="goBack()">← Change mood</button>
+  </div>
+  <!-- Cards get injected here by renderMovies() -->
+  <div class="movie-list" id="movie-list"></div>
+</div>
+
+<script>
+  // ─── Movie Data ───────────────────────────────────────────────────────────────
+  // All 30 films are stored right here — no API calls, works completely offline.
+  // Each entry has: title, year, a short mood tag, a star rating, an emoji
+  // poster (standing in for a real image), and a one-line description.
+
+  const MOVIES = {
+    Happy: [
+      { title: "The Grand Budapest Hotel", year: 2014, moodTag: "Quirky Delight", rating: 4.8, poster: "images/Grandbudapesthotel.jpg", description: "A whimsical adventure through an eccentric hotel filled with colourful characters, heists, and deadpan humour." },
+      { title: "Paddington 2", year: 2017, moodTag: "Pure Joy", rating: 4.9, poster: "images/Paddington2.jpg", description: "The lovable bear's sequel is one of the most feel-good films ever made — warm, funny, and utterly charming." },
+      { title: "Singin' in the Rain", year: 1952, moodTag: "Classic Fun", rating: 4.7, poster: "images/SinginInTheRain.jpg", description: "Hollywood's golden-age gem bursting with iconic song-and-dance numbers that are impossible not to smile through." },
+      { title: "Amelie", year: 2001, moodTag: "Whimsical", rating: 4.7, poster: "images/Amelie.jpg", description: "A Parisian dreamer secretly improves the lives of those around her in this visually dazzling French delight." },
+      { title: "The Secret Life of Walter Mitty", year: 2013, moodTag: "Uplifting", rating: 4.4, poster: "images/SecretLifeOfWalterMitty.jpg", description: "A daydreamer embarks on an extraordinary real-world adventure spanning the globe — visually stunning and heartfelt." }
+    ],
+    Sad: [
+      { title: "Eternal Sunshine of the Spotless Mind", year: 2004, moodTag: "Bittersweet", rating: 4.8, poster: "images/EternalSunshine.jpg", description: "A heartbroken man erases memories of his ex-lover, only to fall for her again inside his own mind." },
+      { title: "Manchester by the Sea", year: 2016, moodTag: "Raw Grief", rating: 4.6, poster: "images/ManchesterByTheSea.jpg", description: "A quiet, devastating portrait of a man crushed by loss who must care for his teenage nephew." },
+      { title: "Her", year: 2013, moodTag: "Lonely Love", rating: 4.7, poster: "images/Her.jpg", description: "A lonely writer falls in love with his AI operating system in this achingly tender science-fiction drama." },
+      { title: "Blue Valentine", year: 2010, moodTag: "Heartbreak", rating: 4.3, poster: "images/BlueValentine.jpg", description: "Two timelines show a couple falling in love and falling apart — raw, honest, and deeply moving." },
+      { title: "About Time", year: 2013, moodTag: "Tender", rating: 4.5, poster: "images/AboutTime.jpg", description: "A man who can time-travel learns that the real gift is paying attention to ordinary moments with loved ones." }
+    ],
+    Relaxed: [
+      { title: "Lost in Translation", year: 2003, moodTag: "Dreamy", rating: 4.6, poster: "images/LostInTranslation.jpg", description: "Two strangers share a quiet, meaningful connection in the hazy, neon-lit nights of Tokyo." },
+      { title: "My Neighbor Totoro", year: 1988, moodTag: "Peaceful", rating: 4.9, poster: "images/MyNeighborTotoro.jpg", description: "Miyazaki's gentlest masterpiece — two children befriend forest spirits in rural Japan. Pure, tranquil magic." },
+      { title: "Chef", year: 2014, moodTag: "Warm and Cosy", rating: 4.4, poster: "images/Chef.jpg", description: "A chef quits his job and drives a food truck across America with his son. Joyful and mouthwatering." },
+      { title: "Julie and Julia", year: 2009, moodTag: "Comforting", rating: 4.2, poster: "images/JulieAndJulia.jpg", description: "Two women separated by decades bond over Julia Child's cookbook in this cosy, satisfying culinary film." },
+      { title: "Midnight in Paris", year: 2011, moodTag: "Nostalgic", rating: 4.5, poster: "images/MidnightInParis.jpg", description: "A romantic writer in Paris magically travels back in time each midnight to the 1920s golden age." }
+    ],
+    Excited: [
+      { title: "Mad Max: Fury Road", year: 2015, moodTag: "Pure Adrenaline", rating: 4.9, poster: "images/MadMaxFuryRoad.jpg", description: "Two hours of relentless, breathtaking action across a post-apocalyptic wasteland. A modern action masterpiece." },
+      { title: "Edge of Tomorrow", year: 2014, moodTag: "Non-Stop Thrills", rating: 4.7, poster: "images/EdgeOfTomorrow.jpg", description: "A soldier relives the same alien-invasion battle day over and over, getting sharper each time. Brilliant fun." },
+      { title: "Spider-Man: Into the Spider-Verse", year: 2018, moodTag: "Explosive Energy", rating: 4.9, poster: "images/SpiderManIntoTheSpiderVerse.jpg", description: "A visually revolutionary animated superhero film that reinvents what animation can look and feel like." },
+      { title: "Top Gun: Maverick", year: 2022, moodTag: "High Octane", rating: 4.7, poster: "images/TopGunMaverick.jpg", description: "Tom Cruise returns in this thrilling, nostalgia-fueled sequel that delivers heart-pounding aerial action and emotional stakes." },
+      { title: "Everything Everywhere All at Once", year: 2022, moodTag: "Mind-Blowing", rating: 4.9, poster: "images/EverythingEverywhereAllAtOnce.jpg", description: "A laundromat owner discovers she can access skills from parallel universes in this maximalist genre-defying epic." }
+    ],
+    Romantic: [
+      { title: "Before Sunrise", year: 1995, moodTag: "Intimate", rating: 4.8, poster: "images/BeforeSunrise.jpg", description: "Two strangers spend a single magical night wandering Vienna together. Pure, unfiltered romantic conversation." },
+      { title: "Pride and Prejudice", year: 2005, moodTag: "Classic Romance", rating: 4.8, poster: "images/PrideAndPrejudice.jpg", description: "Keira Knightley's Lizzie Bennet and Matthew Macfadyen's Darcy make this literary romance utterly irresistible." },
+      { title: "Call Me By Your Name", year: 2017, moodTag: "Passionate", rating: 4.6, poster: "images/CallMeByYourName.jpg", description: "A slow-burning summer romance between two young men in the Italian countryside — sensuous and deeply felt." },
+      { title: "Crazy, Stupid, Love", year: 2011, moodTag: "Charming", rating: 4.4, poster: "images/CrazyStupidLove.jpg", description: "Multiple love stories interweave in this sharp, funny, and genuinely sweet romantic comedy with a great cast." },
+      { title: "Portrait of a Lady on Fire", year: 2019, moodTag: "Intense", rating: 4.8, poster: "images/PortraitOfALadyOnFire.jpg", description: "A painter and her subject fall in love in 18th-century France in this visually stunning, slow-burning film." }
+    ],
+    Motivated: [
+      { title: "Whiplash", year: 2014, moodTag: "Intense Drive", rating: 4.9, poster: "images/Whiplash.jpg", description: "A jazz drummer is pushed to his absolute limits by a ruthless instructor. Gripping, relentless, and electrifying." },
+      { title: "The Pursuit of Happyness", year: 2006, moodTag: "Inspiring", rating: 4.6, poster: "images/ThePursuitOfHappyness.jpg", description: "Will Smith's true-story portrayal of a man who refuses to give up while raising his son through hardship." },
+      { title: "Rocky", year: 1976, moodTag: "Underdog Classic", rating: 4.7, poster: "images/Rocky.jpg", description: "The original underdog story. A small-time boxer gets a shot at the world heavyweight championship." },
+      { title: "The Social Network", year: 2010, moodTag: "Ambition", rating: 4.7, poster: "images/TheSocialNetwork.jpg", description: "The founding of Facebook told as a razor-sharp, fast-paced drama about genius, ambition, and betrayal." },
+      { title: "Moneyball", year: 2011, moodTag: "Game Changer", rating: 4.5, poster: "images/Moneyball.jpg", description: "Brad Pitt rebuilds a baseball team using statistics, challenging every convention of the sport. Surprisingly gripping." }
+    ]
+  };
+
+  // ─── selectMood ───────────────────────────────────────────────────────────────
+  // Called when the user clicks a mood button. Updates the heading on the results
+  // screen, flips over to it, then kicks off the card rendering.
+
+  function selectMood(mood) {
+    document.getElementById('mood-label').textContent = mood;
+    showScreen('results-screen');
+    renderMovies(MOVIES[mood]);
+  }
+
+  // ─── renderMovies ─────────────────────────────────────────────────────────────
+  // Builds a card for each film and drops them into the #movie-list container.
+  // The star rating is calculated from the numeric rating — e.g. 4.8 → ★★★★½☆
+
+  function renderMovies(movies) {
+    const list = document.getElementById('movie-list');
+    list.innerHTML = ''; // clear whatever was there before
+
+    movies.forEach(m => {
+      // Work out how many full stars, a half star, and empty stars we need
+      const full  = Math.floor(m.rating);
+      const half  = m.rating % 1 >= 0.5;
+      const empty = 5 - Math.ceil(m.rating);
+      const stars = '★'.repeat(full) + (half ? '½' : '') + '☆'.repeat(empty);
+
+      // Build search URLs — trailer goes to YouTube, More Info goes to IMDB
+      const ytQ   = encodeURIComponent(m.title + ' ' + m.year + ' official trailer');
+      const imdbQ = encodeURIComponent(m.title + ' ' + m.year);
+
+      const card = document.createElement('div');
+      card.className = 'movie-card';
+      card.innerHTML =
+        '<div class="movie-poster"><img src="' + m.poster + '" alt="' + esc(m.title) + ' poster"></div>' +
+        '<div class="movie-info">' +
+          '<div class="movie-rating">' + stars + ' <span style="color:var(--muted);font-size:0.7rem">' + m.rating + '/5</span></div>' +
+          '<div class="movie-top">' +
+            '<span class="movie-title">'  + esc(m.title)   + '</span>' +
+            '<span class="movie-year">'   + m.year          + '</span>' +
+            '<span class="mood-tag">'     + esc(m.moodTag)  + '</span>' +
+          '</div>' +
+          '<div class="movie-desc">' + esc(m.description) + '</div>' +
+          '<div class="movie-actions">' +
+            '<a class="btn-trailer" href="https://www.youtube.com/results?search_query=' + ytQ   + '" target="_blank" rel="noopener">&#9654; Trailer</a>' +
+            '<a class="btn-info"    href="https://www.imdb.com/find/?q='                + imdbQ + '" target="_blank" rel="noopener">More Info</a>' +
+          '</div>' +
+        '</div>';
+
+      list.appendChild(card);
+    });
+  }
+
+  // ─── esc ──────────────────────────────────────────────────────────────────────
+  // Sanitises any string before putting it into innerHTML.
+  // Stops things like a film title containing "<" from breaking the page.
+
+  function esc(s) {
+    return String(s)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  // ─── showScreen ───────────────────────────────────────────────────────────────
+  // Hides all screens, then reveals just the one we want.
+  // Also scrolls the results screen back to the top so you don't land halfway down.
+
+  function showScreen(id) {
+    document.querySelectorAll('.screen').forEach(s => s.classList.add('hidden'));
+    document.getElementById(id).classList.remove('hidden');
+    if (id === 'results-screen') document.getElementById('results-screen').scrollTop = 0;
+  }
+
+  // ─── goBack ───────────────────────────────────────────────────────────────────
+  // Just takes you back to the mood picker — hooked up to the "← Change mood" button.
+
+  function goBack() { showScreen('mood-screen'); }
+</script>
+</body>
+</html>
